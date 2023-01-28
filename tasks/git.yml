@@ -1,0 +1,50 @@
+---
+- name: Install git
+  apt:
+    name: git
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Deploy k3s ssh public deploy key
+  copy:
+    content: "{{ k3s_ssh_public_deploy_key }}"
+    dest: "{{ k3s_ssh_public_deploy_key_path }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_group }}"
+    mode: '0644'
+
+- name: Deploy k3s ssh private deploy key
+  copy:
+    content: "{{ k3s_ssh_private_deploy_key }}\n"
+    dest: "{{ k3s_ssh_private_deploy_key_path }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_group }}"
+    mode: '0600'
+  no_log: true
+
+- name: Deploy ssh config file to pull repo
+  template:
+    src: templates/config.j2
+    dest: "/home/{{ ansible_user }}/.ssh/config"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_group }}"
+    mode: '0400'
+
+- name: Create code directory
+  file:
+    path: "/home/{{ ansible_user }}/code"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_group }}"
+    mode: '0700'
+    state: directory
+
+- name: Git checkout charts repo
+  ansible.builtin.git:
+    repo: "git@git-server.com:charts.git"
+    dest: "/home/{{ ansible_user }}/code/charts"
+    key_file: "{{ k3s_ssh_private_deploy_key_path }}"
+    version: master
+    accept_hostkey: yes
+    clone: yes
+    force: yes

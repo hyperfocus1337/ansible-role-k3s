@@ -1,0 +1,4 @@
+# Pip packages required for this role
+molecule-vagrant==0.6.1
+python-vagrant==0.5.15
+openshift==0.12

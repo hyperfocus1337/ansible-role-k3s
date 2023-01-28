@@ -1,0 +1,335 @@
+---
+- name: Prepare roles
+  hosts: all
+  become: yes
+  gather_facts: no
+  roles:
+    - role: robertdebock.bootstrap
+    - role: robertdebock.buildtools
+    - role: robertdebock.epel
+    - role: geerlingguy.helm
+
+- name: Install python pip dependencies
+  hosts: all
+  become: yes
+  gather_facts: no
+  roles:
+    - role: hyperfocus1337.python_pip
+  vars:
+    python_pip_modules:
+      - name: openshift
+
+- name: Update cache
+  hosts: all
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: Update repositories cache
+      apt:
+        update_cache: yes
+
+    - name: Install acl
+      apt:
+        name: acl
+
+- name: Converge database
+  hosts: k3s_database
+  become: yes
+  gather_facts: yes
+  roles:
+    - role: robertdebock.postgres
+  vars:
+    - postgres_databases:
+        - name: k3s_db
+      postgres_users:
+        - name: k3s_user
+          password: password
+      postgres_listen_addresses: "*"
+      postgres_hba_entries:
+        - type: host
+          database: all
+          user: all
+          address: 0.0.0.0/0
+          method: trust
+        - type: host
+          database: all
+          user: all
+          address: ::/0
+          method: trust
+        - type: local
+          database: all
+          user: all
+          method: peer
+        - type: host
+          database: all
+          user: all
+          address: 127.0.0.1/32
+          method: ident
+        - type: host
+          database: all
+          user: all
+          address: ::1/128
+          method: ident
+
+- name: Install tools to connect from k3s server to k3s db
+  hosts: k3s-server
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: Install postgresql client utilities
+      apt:
+        name:
+          - postgresql-client-common
+          - postgresql-client
+          - net-tools
+
+- name: Before cluster creation tasks
+  hosts: k3s-server
+  gather_facts: yes
+  vars:
+    ansible_user: vagrant
+    ansible_group: vagrant
+  tasks:
+    - include_vars: ./../../vars/main.yml
+    - include_vars: ./../../vars/vault_k3s.yml
+
+    - name: Install git
+      apt:
+        name: git
+        state: present
+        update_cache: yes
+      become: yes
+
+    - name: Deploy k3s ssh public deploy key
+      copy:
+        content: "{{ k3s_ssh_public_deploy_key }}"
+        dest: "{{ k3s_ssh_public_deploy_key_path }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0644'
+
+    - name: Deploy k3s ssh private deploy key
+      copy:
+        content: "{{ k3s_ssh_private_deploy_key }}\n"
+        dest: "{{ k3s_ssh_private_deploy_key_path }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0600'
+      no_log: true
+
+    - name: Deploy ssh config file to pull repo
+      template:
+        src: ./../../templates/config.j2
+        dest: "/home/{{ ansible_user }}/.ssh/config"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0400'
+
+    - name: Create code directory
+      file:
+        path: "/home/{{ ansible_user }}/code"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0700'
+        state: directory
+
+    - name: Git checkout charts repo
+      ansible.builtin.git:
+        repo: "git@some-repo.com:/charts.git"
+        dest: "/home/{{ ansible_user }}/code/charts"
+        key_file: "{{ k3s_ssh_private_deploy_key_path }}"
+        version: master
+        accept_hostkey: yes
+        clone: yes
+        force: yes
+
+    # - name: Create manifests directory
+    #   file:
+    #     path: "/var/lib/rancher/k3s/server/manifests"
+    #     owner: root
+    #     group: root
+    #     state: directory
+    #   become: yes
+
+    # - name: Copy  directory to k3s server manifests
+    #   ansible.builtin.shell: "rsync -r /home/{{ ansible_user }}/code/charts/ /var/lib/rancher/k3s/server/manifests"
+    #   become: yes
+
+    # - name: Copy nginx private ingress crd to k3s server manifests
+    #   ansible.builtin.shell: "rsync -r /home/{{ ansible_user }}/code/charts/nginx-ingress/private/crd.yaml /var/lib/rancher/k3s/server/manifests"
+    #   become: yes
+
+- name: Converge server
+  hosts: k3s-server
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: "Include ansible-role-k3s"
+      include_role:
+        name: "ansible-role-k3s"
+      vars:
+        ansible_k3s_env_k3s_datastore_endpoint: postgres://k3s_user:password@192.168.0.6:5432/k3s_db
+
+- name: Converge agent
+  hosts: k3s_agent
+  become: yes
+  tasks:
+    - name: "Include ansible-role-k3s"
+      include_role:
+        name: "ansible-role-k3s"
+
+- name: After cluster creation tasks
+  hosts: k3s-server
+  gather_facts: yes
+  vars:
+    ansible_user: vagrant
+    ansible_group: vagrant
+  tasks:
+    - include_vars: ./../../vars/main.yml
+    - include_vars: ./../../vars/vault_k3s.yml
+
+    # - name: add agent label to k3s-agent node
+    #   ansible.builtin.shell: sudo kubectl label node k3s-agent kubernetes.io/role=agent
+    #   ignore_errors: yes
+
+    - name: Add ingress-nginx chart repo
+      community.kubernetes.helm_repository:
+        name: ingress-nginx
+        repo_url: "https://kubernetes.github.io/ingress-nginx"
+
+    - name: Create the nginx private ingress namespace
+      community.kubernetes.k8s:
+        name: nginx-private-ingress
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Deploy nginx private ingress chart
+      community.kubernetes.helm:
+        name: nginx-private-ingress
+        chart_ref: ingress-nginx/ingress-nginx
+        release_namespace: nginx-private-ingress
+        values_files:
+          - "/home/{{ ansible_user }}/code/charts/nginx-ingress/private/values.yaml"
+
+    - name: Create the nginx public ingress namespace
+      community.kubernetes.k8s:
+        name: nginx-public-ingress
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Deploy nginx public ingress chart
+      community.kubernetes.helm:
+        name: nginx-public-ingress
+        chart_ref: ingress-nginx/ingress-nginx
+        release_namespace: nginx-public-ingress
+        values_files:
+          - "/home/{{ ansible_user }}/code/charts/nginx-ingress/public/values.yaml"
+
+    - name: Pause for 3 seconds to not overload the k3s api
+      pause:
+        seconds: 3
+
+    - name: Create the datadog namespace
+      community.kubernetes.k8s:
+        name: datadog
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Add datadog chart repo
+      community.kubernetes.helm_repository:
+        name: datadog
+        repo_url: "https://helm.datadoghq.com"
+
+    - name: Deploy datadog chart
+      community.kubernetes.helm:
+        name: datadog
+        chart_ref: datadog/datadog
+        release_namespace: datadog
+        values_files:
+          - "/home/{{ ansible_user }}/code/charts/datadog/values.yaml"
+
+    - name: Create the custom datadog service
+      community.kubernetes.k8s:
+        src: "/home/{{ ansible_user }}/code/charts/datadog/service.yaml"
+        state: present
+
+    - name: Pause for 3 seconds to not overload the k3s api
+      pause:
+        seconds: 3
+
+    - name: Create the metallb namespace
+      community.kubernetes.k8s:
+        name: metallb-system
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Create the metallb copy directory
+      file:
+        path: "/home/{{ ansible_user }}/code/metallb"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0755'
+        state: directory
+
+    - name: Copy metallb configmap
+      ansible.builtin.copy:
+        src: ./templates/metallb/configmap.yaml
+        dest: "/home/{{ ansible_user }}/code/metallb/configmap.yaml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Create the custom metallb configmap
+      community.kubernetes.k8s:
+        src: "/home/{{ ansible_user }}/code/metallb/configmap.yaml"
+        state: present
+
+    - name: Copy metallb values file
+      ansible.builtin.copy:
+        src: ./templates/metallb/values.yaml
+        dest: "/home/{{ ansible_user }}/code/metallb/values.yaml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Add bitnami chart repo
+      community.kubernetes.helm_repository:
+        name: bitnami
+        repo_url: "https://charts.bitnami.com/bitnami"
+
+    - name: Deploy metallb chart
+      community.kubernetes.helm:
+        name: metallb
+        chart_ref: bitnami/metallb
+        release_namespace: metallb-system
+        values_files:
+          - "/home/{{ ansible_user }}/code/metallb/values.yaml"
+
+    - name: Pause for 3 seconds to not overload the k3s api
+      pause:
+        seconds: 3
+
+    - name: Create the rancher namespace
+      community.kubernetes.k8s:
+        name: cattle-system
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Add rancher chart repo
+      community.kubernetes.helm_repository:
+        name: rancher-stable
+        repo_url: "https://releases.rancher.com/server-charts/stable"
+      ignore_errors: yes
+
+    - name: Deploy rancher
+      community.kubernetes.helm:
+        name: rancher
+        chart_ref: rancher-stable/rancher
+        release_namespace: cattle-system
+        values_files:
+          - "/home/{{ ansible_user }}/code/charts/rancher/values.yaml"

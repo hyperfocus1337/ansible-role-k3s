@@ -1,0 +1,20 @@
+---
+- name: Import sysctl.yml
+  import_tasks: sysctl.yml
+  when: ansible_k3s_sysctl_deploy and not ansible_k3s_uninstall
+
+- name: Import download.yml
+  import_tasks: download.yml
+  when: not ansible_k3s_uninstall
+
+- name: Import deploy.yml
+  import_tasks: deploy.yml
+  when: not ansible_k3s_uninstall
+
+- name: Import git.yml
+  import_tasks: git.yml
+  when: ansible_k3s_daemon_mode == 'server' and not ansible_k3s_uninstall
+
+- name: Import uninstall.yml
+  import_tasks: uninstall.yml
+  when: ansible_k3s_uninstall

@@ -1,0 +1,44 @@
+---
+ansible_user: ansible
+ansible_group: ansible
+
+# Enable to run uninstall k3s task
+ansible_k3s_uninstall: false
+
+# Sysctl vars
+ansible_k3s_sysctl_deploy: no
+ansible_k3s_sysctl_config:
+  - name: net.ipv4.ip_forward
+    value: 1
+  - name: net.ipv6.conf.all.forwarding
+    value: 1
+
+# K3s binary vars
+ansible_k3s_version: v1.21.0+k3s1
+ansible_k3s_bin_url: "https://github.com/rancher/k3s/releases/download/{{ ansible_k3s_version }}/k3s"
+ansible_k3s_bin_base_path: /usr/local/bin
+ansible_k3s_bin_path: "{{ ansible_k3s_bin_base_path }}/k3s-{{ ansible_k3s_version }}"
+
+# The server mode k3s runs in (Choices = ['server', 'agent'])
+ansible_k3s_daemon_mode: "server"
+
+# Paths of the k3s startup files
+ansible_k3s_service_base_path: /etc/systemd/system
+ansible_k3s_service_systemd_file_path: "{{ ansible_k3s_service_base_path }}/k3s.service"
+ansible_k3s_service_env_file_path: "{{ ansible_k3s_service_base_path }}/k3s.service.env"
+
+# K3s token vars
+ansible_k3s_server_group: "k3s-server"
+ansible_k3s_env_k3s_token: "{{ hostvars[groups[ansible_k3s_server_group][0]]['token'] | default() }}"
+ansible_k3s_env_k3s_url: "https://{{ hostvars[groups[ansible_k3s_server_group][0]]['ansible_fqdn'] | default(ansible_fqdn) }}:6443"
+
+# Placeholder datastore endpoint
+ansible_k3s_env_k3s_datastore_endpoint: "postgres://k3s_user:k3s_password@{{ ansible_facts['fqdn'] }}:5432/k3s_db"
+
+# Array with extra env vars
+ansible_k3s_service_env_file: []
+#  - name: EXAMPLE
+#    value: example
+
+# Extra k3s binary cmd line args in systemd service
+ansible_k3s_service_extra_args: "--disable traefik servicelb --node-ip {{ ansible_facts['default_ipv4']['address'] }} --node-external-ip {{ ansible_facts['default_ipv4']['address'] }}"

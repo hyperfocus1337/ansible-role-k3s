@@ -1,0 +1,11 @@
+---
+- name: Configuring sysctl
+  sysctl:
+    name: "{{ sysctl_item.name }}"
+    value: "{{ sysctl_item.value }}"
+    sysctl_set: yes
+    state: present
+    reload: yes
+  loop: "{{ ansible_k3s_sysctl_config }}"
+  loop_control:
+    loop_var: sysctl_item

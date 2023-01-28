@@ -1,0 +1,13 @@
+galaxy_info:
+  author: hyperfocus1337
+  description: Ansible role to deploy K3s
+  min_ansible_version: 2.9
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - 19.10
+
+  galaxy_tags: []
+
+dependencies: []

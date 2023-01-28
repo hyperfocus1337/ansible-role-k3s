@@ -1,0 +1,19 @@
+---
+- name: Restart K3s
+  systemd:
+    name: k3s
+    state: restarted
+
+- name: Replace kubectl config
+  copy:
+    src: /tmp/k3s.yaml
+    dest: ~{{ ansible_user }}/.kube/config
+    remote_src: yes
+    owner: "{{ ansible_user }}"
+  notify: Replace kubectl server
+
+- name: Replace kubectl server
+  command: >-
+    k3s kubectl config set-cluster default
+      --server={{ ansible_k3s_env_k3s_url }}
+      --kubeconfig ~{{ ansible_user }}/.kube/config

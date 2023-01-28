@@ -1,0 +1,29 @@
+---
+roles:
+  - name: robertdebock.bootstrap
+    src: https://github.com/robertdebock/ansible-role-bootstrap.git
+    scm: git
+
+  - name: hyperfocus1337.postgres
+    src: https://github.com/hyperfocus1337/ansible-role-postgres.git
+    scm: git
+
+  - name: robertdebock.buildtools
+    src: https://github.com/robertdebock/ansible-role-buildtools.git
+    scm: git
+
+  - name: robertdebock.epel
+    src: https://github.com/robertdebock/ansible-role-epel.git
+    scm: git
+
+  - name: hyperfocus1337.python_pip
+    src: https://github.com/hyperfocus1337/ansible-role-python_pip.git
+    scm: git
+
+  - name: geerlingguy.helm
+    src: https://github.com/geerlingguy/ansible-role-helm.git
+    scm: git
+
+collections:
+- community.kubernetes
+- community.postgresql

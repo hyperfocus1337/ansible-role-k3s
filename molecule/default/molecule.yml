@@ -1,0 +1,67 @@
+---
+dependency:
+  name: galaxy
+  enabled: True
+  options:
+    ignore-certs: False
+    ignore-errors: False
+    requirements-file: requirements.yml
+driver:
+  name: vagrant
+  provider:
+    name: virtualbox
+platforms:
+  - name: k3s-server
+    box: ubuntu/focal64
+    instance_raw_config_args:
+      - "vm.network 'forwarded_port', guest: 6443, host: 6443"
+      - "vm.network 'forwarded_port', guest: 8080, host: 8080"
+    memory: 2048
+    cpus: 2
+    pre_build_image: true
+    groups:
+      - k3s-server
+    interfaces:
+      - network_name: private_network
+        ip: 192.168.0.1
+        virtualbox__intnet: "k3s-network"
+  - name: k3s-agent
+    box: ubuntu/focal64
+    memory: 2048
+    cpus: 2
+    pre_build_image: true
+    groups:
+      - k3s-agent
+    interfaces:
+      - network_name: private_network
+        ip: 192.168.0.5
+        virtualbox__intnet: "k3s-network"
+  - name: k3s-database
+    box: generic/debian10
+    instance_raw_config_args:
+      - "vm.network 'forwarded_port', guest: 5432, host: 5432"
+    memory: 2048
+    cpus: 2
+    pre_build_image: true
+    groups:
+      - k3s-database
+    interfaces:
+      - network_name: private_network
+        ip: 192.168.0.6
+        virtualbox__intnet: "k3s-network"
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      all:
+        ansible_k3s_sysctl_deploy: yes
+        ansible_k3s_server_group: "k3s-server"
+        ansible_k3s_env_k3s_url: "https://192.168.0.1:6443"
+      k3s-server:
+        ansible_k3s_daemon_mode: server
+        ansible_k3s_service_extra_args: "--node-ip 192.168.0.1 --disable traefik"
+      k3s-agent:
+        ansible_k3s_daemon_mode: agent
+        ansible_k3s_service_extra_args: "--node-ip 192.168.0.5"
+verifier:
+  name: ansible

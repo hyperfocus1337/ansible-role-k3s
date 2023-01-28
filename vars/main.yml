@@ -1,0 +1,14 @@
+---
+ansible_k3s_vars_k3s_matrix:
+  v1.21.0+k3s1: sha256:28b732998138e3185988cd2aefb352461e1bf517cf8f7435d8511352cc5d962b
+  v1.20.6+k3s1: sha256:307438ead0c8fcbf9740b91ff1e100b7146c826d93546d3464252a54def21d46
+  v1.19.10+k3s1: sha256:740451d8914477d4917338f55a321ad34af75dc59782b387088b8c1a3d33d607
+  v1.18.17+k3s1: sha256:1c6e62a6bd2b7a72ff571c972635a9035a747cfe58355c68e676dc0f1577f2a2
+  v1.18.8+k3s1: sha256:8382046072f6e8882e5d903deb5b64fa98663fb868e7ac0a62b611e227d2fb04
+  v1.17.11+k3s1: sha256:9f107a8c9089452769f78374c51536e3b9adafa13b1c614e6669c20fadfbf339
+
+k3s_ssh_public_deploy_key: "{{ vault_k3s_ssh_public_deploy_key }}"
+k3s_ssh_private_deploy_key: "{{ vault_k3s_ssh_private_deploy_key }}"
+
+k3s_ssh_private_deploy_key_path: "/home/{{ ansible_user }}/.ssh/k3s-deploy-key"
+k3s_ssh_public_deploy_key_path: "/home/{{ ansible_user }}/.ssh/k3s-deploy-key.pub"

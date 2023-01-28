@@ -1,0 +1,32 @@
+---
+- name: Deploy K3s systemd environment variables
+  template:
+    src: k3s.service.env.j2
+    dest: "{{ ansible_k3s_service_env_file_path }}"
+    owner: root
+    group: root
+    mode: '0400'
+  notify: Restart K3s
+  no_log: true
+
+- name: Deploy K3s systemd service configuration
+  template:
+    src: k3s.service.j2
+    dest: "{{ ansible_k3s_service_systemd_file_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart K3s
+
+- name: Enable K3s service
+  systemd:
+    name: k3s
+    daemon_reload: yes
+    enabled: yes
+
+- name: Flush all triggers
+  meta: flush_handlers
+
+- name: Perform server tasks
+  include_tasks: k3s-server.yml
+  when: ansible_k3s_daemon_mode == 'server'
